@@ -1,0 +1,31 @@
+name:          spectrofy
+version:       0.0.1
+synopsis:      Image to spectrogram converter
+license:       BSD3
+license-file:  LICENSE
+author:        8c6794b6
+maintainer:    8c6794b6@gmail.com
+Copyright:     8c6794b6, 2011
+category:      Sound, Graphics
+build-type:    Simple
+cabal-version: >=1.2
+
+Description:
+  Converts BMP image to WAV sound file.
+  .
+  Spectrogram of result sound file resembles input image.
+
+executable spectrofy
+
+  Main-is:
+    spectrofy.hs
+
+  ghc-options:
+    -Wall -fno-warn-unused-do-bind
+    -O2 -rtsopts -threaded
+
+  build-depends:
+    base >= 4.0 && < 5.0,
+    repa == 2.1.1.5,
+    repa-io == 2.1.0.1,
+    repa-sndfile >= 0.0.1
