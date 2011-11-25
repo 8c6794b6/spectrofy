@@ -30,11 +30,37 @@ import qualified Data.Array.Repa.IO.Sndfile as R
 main :: IO ()
 main = spectrofy . parseOpts =<< getArgs
 
+parseOpts :: [String] -> ((Options, [String], [String]), Mode)
+parseOpts args = case args of
+  "sin":rest -> (f $ getOpt Permute sinOpts rest, Sin)
+  "fft":rest -> (f $ getOpt Permute fftOpts rest, FFT)
+  _          -> error usage
+  where
+    f (os,ns,es) = (foldr ($) defaultOptions os, ns, es)
+
+spectrofy :: ((Options, [String], [String]), Mode) -> IO ()
+spectrofy ((Options{..}, args, errs),mode)
+  | not (null errs) = error $ unlines (errs++[usage])
+  | showHelp        = putStr usage
+  | otherwise       = case args of
+    ifile:ofile:_ -> do
+      let write = R.writeSF ofile (R.wav16 {R.samplerate = samplingRate})
+      img <- R.readImageFromBMP ifile
+      case img of
+        Left err   -> error $ show err
+        Right img' -> case mode of
+          Sin -> write $ R.force $ sinsyn samplingRate numDelta img'
+          FFT -> write $ R.force $ fftsyn fftSize img'
+    _ -> putStr usage
+
+data Mode = Sin | FFT
+
 data Options = Options
   { showHelp :: Bool
   , samplingRate :: Int
   , numDelta :: Int
   , isTest :: Bool
+  , fftSize :: Int
   } deriving (Eq, Show)
 
 defaultOptions :: Options
@@ -42,61 +68,66 @@ defaultOptions = Options
   { showHelp = False
   , samplingRate = 48000
   , numDelta = 4800
-  , isTest = False}
+  , isTest = False
+  , fftSize = 1024 }
 
-options :: [OptDescr (Options -> Options)]
-options =
-  [ Option ['r'] ["rate"]
-    (ReqArg (\v flg -> flg {samplingRate = read v}) "INT")
-    "Sampling rate (default 48000)"
-  , Option ['d'] ["delta"]
+sRateOpt :: OptDescr (Options -> Options)
+sRateOpt =
+  Option ['r'] ["rate"]
+  (ReqArg (\v o -> o {samplingRate = read v}) "INT")
+  "Sampling rate (default 48000)"
+
+helpOpt :: OptDescr (Options -> Options)
+helpOpt =
+  Option ['h'] ["help"]
+  (NoArg (\o -> o {showHelp = True}))
+  "Show this help"
+
+sinOpts :: [OptDescr (Options -> Options)]
+sinOpts =
+  [ Option ['d'] ["delta"]
     (ReqArg (\v flg -> flg {numDelta = read v}) "INT")
     "Number of delta samples (default 4800)"
-  , Option ['t'] ["test"]
-    (NoArg (\flg -> flg {isTest = True}))
-    "Test in-progress feature"
-  , Option ['h'] ["help"]
-    (NoArg (\flg -> flg {showHelp = True}))
-    "Show this help"
+  , sRateOpt
+  , helpOpt
+  ]
+
+fftOpts :: [OptDescr (Options -> Options)]
+fftOpts =
+  [ Option ['f'] ["fsize"]
+    (ReqArg (\v flg -> flg {fftSize = read v}) "INT")
+    "FFT size (default 1024)"
+  , sRateOpt
+  , helpOpt
   ]
 
 usage :: String
-usage = unlines [usageInfo msg options, example] where
-  msg =
-    "Usage: spectrofy [OPTIONS] [INFILE] [OUTFILE]\n\nOptions:"
-  example =
-    "Example:\n\
-    \  spectrofy -r 22050 -d 2200 in.bmp out.wav"
-
-parseOpts :: [String] -> (Options, [String])
-parseOpts args = case getOpt Permute options args of
-  (fs,args',[]) -> let opts = foldr ($) defaultOptions fs in (opts,args')
-  (_,_,es)      -> error (unlines [unwords es, usage])
-
-spectrofy :: (Options, [String]) -> IO ()
-spectrofy (Options{..},args)
-  | showHelp  = putStrLn usage
-  | otherwise = case args of
-    ifile:ofile:_ -> do
-      let fmt = R.wav16 {R.samplerate = samplingRate}
-      img <- R.readImageFromBMP ifile
-      case img of
-        Left err   -> error $ show err
-        Right img'
-          | isTest    -> fft_test img' ofile
-          | otherwise ->
-            R.writeSF ofile fmt $ R.force $ guts samplingRate numDelta img'
-    _             -> error usage
+usage =
+  unlines
+    [ header
+    , usageInfo "sin" sinOpts
+    , usageInfo "fft" fftOpts
+    , example
+    ]
+  where
+    header =
+      "Usage: spectrofy MODE [OPTIONS] INFILE OUTFILE\n\n\
+      \Modes:\n"
+    example =
+      "Examples:\n\
+       \\n\
+       \  spectrofy sin -r 44100 -d 4410 in.bmp out.wav\n\
+       \  spectrofy fft -r 48000 in.bmp out.wav\n"
 
 
 -- --------------------------------------------------------------------------
---    
--- Manually summing up sinusoids 
 --
-    
-guts :: Int -> Int -> Array DIM3 Word8 -> Array DIM2 Double
-guts rate delta = squash . sumSins . toSins rate . to3D delta . rgbamp
-{-# INLINE guts #-}
+-- Summing up sinusoids
+--
+
+sinsyn :: Int -> Int -> Array DIM3 Word8 -> Array DIM2 Double
+sinsyn rate delta = squash . sumSins . toSins rate . to3D delta . rgbamp
+{-# INLINE sinsyn #-}
 
 rgbamp :: Array DIM3 Word8 -> Array DIM2 Double
 rgbamp arr = R.traverse arr f g where
@@ -141,21 +172,20 @@ squash arr = R.backpermute sh' f arr where
 {-# INLINE squash #-}
 
 -- --------------------------------------------------------------------------
---  
--- Using FFT
+--
+-- Inverse FFT
 --
 -- From haddock comments, it says that fft in repa runs 50x slower than fftw.
 -- Though still faster than summing up sinusoids, in most case.
---  
+--
 
-fft_test :: Array DIM3 Word8 -> FilePath -> IO ()
-fft_test img opath = do
-  let img' = rgbamp img
-      f = sliced_fft 1024 img'
-      _:._:.n = R.extent img'
-      sig = foldr1 R.append $ map f [0..n-1]
-  R.writeSF opath R.wav16 sig
-{-# INLINE fft_test #-}
+fftsyn :: Int -> Array DIM3 Word8 -> Array DIM2 Double
+fftsyn fsize img = sig where
+  sig = foldr1 R.append $ map f [0..n-1]
+  f = sliced_fft fsize img'
+  img' = rgbamp img
+  _:._:.n = R.extent img'
+{-# INLINE fftsyn #-}
 
 sliced_fft :: Int -> Array DIM2 Double -> Int -> Array DIM2 Double
 sliced_fft wsize arr n =
@@ -178,7 +208,7 @@ grow2d n arr = R.traverse arr f g where
       n' = fromIntegral n :: Double
       x' = fromIntegral x
 {-# INLINE grow2d #-}
-      
+
 zpad :: Array DIM2 Double -> Array DIM2 Double
 zpad arr = R.reshape sh' arr' where
   _:.x:.y = R.extent arr
@@ -187,11 +217,11 @@ zpad arr = R.reshape sh' arr' where
   zsh = Z :. len
   sh' = Z :. (2*x) :. y
   arr' = R.append (R.reshape zsh arr) zeros
-{-# INLINE zpad #-}  
+{-# INLINE zpad #-}
 
-------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 -- Scratch
-  
+
 -- chunk :: Int -> [a] -> [[a]]
 -- chunk n xs = case xs of
 --   [] -> []
