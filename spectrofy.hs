@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards, TupleSections #-}
 {-|
 Module      : $Header$
 CopyRight   : (c) 8c6794b6, 2011
@@ -20,44 +20,50 @@ import System.Environment (getArgs)
 import Data.Array.Repa ((:.)(..), Array, DIM2, DIM3, Z(..), All(..))
 
 import qualified Data.Array.Repa as R
+import qualified Data.Array.Repa.Algorithms.FFT as R
 import qualified Data.Array.Repa.IO.BMP as R
 import qualified Data.Array.Repa.IO.Sndfile as R
 
+-----------------------------------------------------------------------------
+-- Arg handling
+
 main :: IO ()
 main = spectrofy . parseOpts =<< getArgs
-
------------------------------------------------------------------------------
--- Command line args
 
 data Options = Options
   { showHelp :: Bool
   , samplingRate :: Int
   , numDelta :: Int
+  , isTest :: Bool
   } deriving (Eq, Show)
 
 defaultOptions :: Options
 defaultOptions = Options
   { showHelp = False
   , samplingRate = 48000
-  , numDelta = 4800 }
+  , numDelta = 4800
+  , isTest = False}
 
 options :: [OptDescr (Options -> Options)]
 options =
-  [ Option ['h'] ["help"]
-    (NoArg (\flg -> flg {showHelp = True}))
-    "Show this help"
-  , Option ['r'] ["rate"]
+  [ Option ['r'] ["rate"]
     (ReqArg (\v flg -> flg {samplingRate = read v}) "INT")
     "Sampling rate (default 48000)"
   , Option ['d'] ["delta"]
     (ReqArg (\v flg -> flg {numDelta = read v}) "INT")
     "Number of delta samples (default 4800)"
+  , Option ['t'] ["test"]
+    (NoArg (\flg -> flg {isTest = True}))
+    "Test in-progress feature"
+  , Option ['h'] ["help"]
+    (NoArg (\flg -> flg {showHelp = True}))
+    "Show this help"
   ]
 
 usage :: String
 usage = unlines [usageInfo msg options, example] where
   msg =
-    "Usage: spectrofy [OPTIONS] [INFILE] [OUTFILE]\n\nOPTIONS:"
+    "Usage: spectrofy [OPTIONS] [INFILE] [OUTFILE]\n\nOptions:"
   example =
     "Example:\n\
     \  spectrofy -r 22050 -d 2200 in.bmp out.wav"
@@ -72,18 +78,22 @@ spectrofy (Options{..},args)
   | showHelp  = putStrLn usage
   | otherwise = case args of
     ifile:ofile:_ -> do
+      let fmt = R.wav16 {R.samplerate = samplingRate}
       img <- R.readImageFromBMP ifile
       case img of
         Left err   -> error $ show err
-        Right img' ->
-          let fmt = R.wav16 {R.samplerate = samplingRate}
-          in  R.writeSF ofile fmt (R.force $ guts samplingRate numDelta img')
+        Right img'
+          | isTest    -> fft_test img' ofile
+          | otherwise ->
+            R.writeSF ofile fmt $ R.force $ guts samplingRate numDelta img'
     _             -> error usage
 
 
------------------------------------------------------------------------------
--- Guts
-
+-- --------------------------------------------------------------------------
+--    
+-- Manually summing up sinusoids 
+--
+    
 guts :: Int -> Int -> Array DIM3 Word8 -> Array DIM2 Double
 guts rate delta = squash . sumSins . toSins rate . to3D delta . rgbamp
 {-# INLINE guts #-}
@@ -129,3 +139,60 @@ squash arr = R.backpermute sh' f arr where
   (_:.x:.y) = R.extent arr
   sh' = Z:.1:.(x*y)
 {-# INLINE squash #-}
+
+-- --------------------------------------------------------------------------
+--  
+-- Using FFT
+--
+-- From haddock comments, it says that fft in repa runs 50x slower than fftw.
+-- Though still faster than summing up sinusoids, in most case.
+--  
+
+fft_test :: Array DIM3 Word8 -> FilePath -> IO ()
+fft_test img opath = do
+  let img' = rgbamp img
+      f = sliced_fft 1024 img'
+      _:._:.n = R.extent img'
+      sig = foldr1 R.append $ map f [0..n-1]
+  R.writeSF opath R.wav16 sig
+{-# INLINE fft_test #-}
+
+sliced_fft :: Int -> Array DIM2 Double -> Int -> Array DIM2 Double
+sliced_fft wsize arr n =
+  R.reshape (Z :. 1 :. wsize :: DIM2) .
+  R.map fst .
+  R.fft1d R.Inverse $
+  R.slice (R.map (,0) $ grow2d wsize (zpad arr)) (Z:.All:.n)
+{-# INLINE sliced_fft #-}
+
+grow2d :: Int -> Array DIM2 Double -> Array DIM2 Double
+grow2d n arr = R.traverse arr f g where
+  f _ = Z :. n :. y
+  _:.x:.y = R.extent arr
+  g h (_:.i:.j)
+    | i' >= 4   = k/4
+    | otherwise = h (Z:.i':.j)
+    where
+      k  = h (Z:.i'-3:.j) + h (Z:.i'-2:.j) + h (Z:.i'-1:.j) + h (Z:.i':.j)
+      i' = fst $ properFraction $ (x' * fromIntegral i / n')
+      n' = fromIntegral n :: Double
+      x' = fromIntegral x
+{-# INLINE grow2d #-}
+      
+zpad :: Array DIM2 Double -> Array DIM2 Double
+zpad arr = R.reshape sh' arr' where
+  _:.x:.y = R.extent arr
+  len = x * y
+  zeros = R.fromList zsh (replicate len 0)
+  zsh = Z :. len
+  sh' = Z :. (2*x) :. y
+  arr' = R.append (R.reshape zsh arr) zeros
+{-# INLINE zpad #-}  
+
+------------------------------------------------------------------------------
+-- Scratch
+  
+-- chunk :: Int -> [a] -> [[a]]
+-- chunk n xs = case xs of
+--   [] -> []
+--   _  -> pre : chunk n post where (pre,post) = splitAt n xs

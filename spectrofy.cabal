@@ -11,9 +11,11 @@ build-type:    Simple
 cabal-version: >=1.2
 
 Description:
-  Converts BMP image to WAV sound file.
+  Convertsimage to sound file.
   .
   Spectrogram of result sound file resembles input image.
+  .
+  Currently supporting BMP for input file, and WAV for output format.
 
 executable spectrofy
 
@@ -27,5 +29,6 @@ executable spectrofy
   build-depends:
     base >= 4.0 && < 5.0,
     repa == 2.1.1.5,
+    repa-algorithms == 2.1.0.1,
     repa-io == 2.1.0.1,
     repa-sndfile >= 0.0.1
