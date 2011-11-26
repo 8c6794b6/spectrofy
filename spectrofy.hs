@@ -7,11 +7,12 @@ Stability   : experimental
 Portability : portable
 
 Convert image to sound file.
-Spectrogram of result sound file resembles to input image.
 
+Spectrogram of result sound file resembles to input image.
 -}
 module Main (main) where
 
+import Data.Complex (Complex(..), realPart)
 import Data.Word (Word8)
 import Data.List (foldl1')
 import System.Console.GetOpt (OptDescr(..), ArgDescr(..), ArgOrder(..))
@@ -20,12 +21,14 @@ import qualified System.Console.GetOpt as O
 
 import Data.Array.Repa ((:.)(..), Array, DIM2, DIM3, Z(..), All(..))
 import qualified Data.Array.Repa as R
-import qualified Data.Array.Repa.Algorithms.FFT as R
+import qualified Data.Array.Repa.FFTW as R
 import qualified Data.Array.Repa.IO.BMP as R
 import qualified Data.Array.Repa.IO.Sndfile as R
 
------------------------------------------------------------------------------
+-- --------------------------------------------------------------------------
+--
 -- Arg handling
+--
 
 main :: IO ()
 main = spectrofy . parseOpts =<< getArgs
@@ -91,8 +94,7 @@ sinOpts =
     (ReqArg (\v flg -> flg {numDelta = read v}) "INT")
     "Number of delta samples (default 4800)"
   , rateOpt
-  , helpOpt
-  ]
+  , helpOpt ]
 
 fftOpts :: [OptDescr (Options -> Options)]
 fftOpts =
@@ -100,8 +102,7 @@ fftOpts =
     (ReqArg (\v flg -> flg {fftSize = read v}) "INT")
     "FFT size (default 1024)"
   , rateOpt
-  , helpOpt
-  ]
+  , helpOpt ]
 
 usage :: String
 usage =
@@ -109,8 +110,7 @@ usage =
     [ header
     , O.usageInfo "sin" sinOpts
     , O.usageInfo "fft" fftOpts
-    , example
-    ]
+    , example ]
   where
     header =
       "Usage: spectrofy MODE [OPTIONS] INFILE OUTFILE\n\n\
@@ -176,21 +176,25 @@ squash arr = R.backpermute sh' f arr where
 --
 -- Inversed FFT
 --
--- From haddock comments, FFT in repa runs 50x slower than fftw.
---
 
 fftsyn :: Int -> Array DIM3 Word8 -> Array DIM2 Double
-fftsyn fsz img = foldl1' R.append $ map (fftslice fsz img') [0..n-1] where
-  img' = rgbamp img
-  _:._:.n:._ = R.extent img
+fftsyn fsz img =
+  {-# SCC "fftsyn" #-}
+  foldl1' R.append $ map (fftslice fsz img') [0..n-1] where
+    img' = rgbamp img
+    _:._:.n:._ = R.extent img
 {-# INLINE fftsyn #-}
 
 fftslice :: Int -> Array DIM2 Double -> Int -> Array DIM2 Double
 fftslice wsize arr n =
+  {-# SCC "fs_reshape" #-}
   R.reshape (Z :. 1 :. wsize :: DIM2) $
-  R.map fst $
-  R.fft1d R.Inverse $
-  R.slice (R.map (\x -> (x,0)) $ grow2d wsize (zpad arr)) (Z:.All:.n)
+  {-# SCC "fs_map" #-}
+  R.map realPart $
+  {-# SCC "fs_ifft" #-}
+  R.ifft $
+  {-# SCC "fs_slice" #-}
+  R.slice (R.map (:+ 0) $ grow2d wsize (zpad arr)) (Z:.All:.n)
 {-# INLINE fftslice #-}
 
 grow2d :: Int -> Array DIM2 Double -> Array DIM2 Double
@@ -216,8 +220,3 @@ zpad arr = {-# SCC "zpad" #-} R.reshape sh' arr' where
   sh' = Z :. (2*x) :. y
   arr' = R.append (R.reshape zsh arr) zeros
 {-# INLINE zpad #-}
-
--- chunk :: Int -> [a] -> [[a]]
--- chunk n xs = case xs of
---   [] -> []
---   _  -> pre : chunk n post where (pre,post) = splitAt n xs

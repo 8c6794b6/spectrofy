@@ -13,9 +13,8 @@ cabal-version: >=1.2
 Description:
   Convertsimage to sound file.
   .
-  Spectrogram of result sound file resembles input image.
-  .
-  Currently supporting BMP for input file, and WAV for output format.
+  Spectrogram of result sound file resembles input image. Currently
+  supporting reading BMP image and writing WAV audio.
 
 flag dev
   description:
@@ -39,6 +38,6 @@ executable spectrofy
   build-depends:
     base >= 4.0 && < 5.0,
     repa == 2.1.1.5,
-    repa-algorithms == 2.1.0.1,
+    repa-fftw >= 2.1.0 && < 2.2.0,
     repa-io == 2.1.0.1,
     repa-sndfile >= 2.1.0 && < 2.2.0
