@@ -1,24 +1,24 @@
-{-# LANGUAGE RecordWildCards, TupleSections #-}
 {-|
 Module      : $Header$
 CopyRight   : (c) 8c6794b6, 2011
 License     : BSD3
 Maintainer  : 8c6794b6@gmail.com
 Stability   : experimental
-Portability : non-portable
+Portability : portable
 
 Convert image to sound file.
 Spectrogram of result sound file resembles to input image.
 
 -}
-module Main where
+module Main (main) where
 
 import Data.Word (Word8)
-import System.Console.GetOpt
+import Data.List (foldl1')
+import System.Console.GetOpt (OptDescr(..), ArgDescr(..), ArgOrder(..))
 import System.Environment (getArgs)
+import qualified System.Console.GetOpt as O
 
 import Data.Array.Repa ((:.)(..), Array, DIM2, DIM3, Z(..), All(..))
-
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Algorithms.FFT as R
 import qualified Data.Array.Repa.IO.BMP as R
@@ -32,28 +32,30 @@ main = spectrofy . parseOpts =<< getArgs
 
 parseOpts :: [String] -> ((Options, [String], [String]), Mode)
 parseOpts args = case args of
-  "sin":rest -> (f $ getOpt Permute sinOpts rest, Sin)
-  "fft":rest -> (f $ getOpt Permute fftOpts rest, FFT)
-  _          -> error usage
+  "sin":rest -> (f sinOpts rest, Sin)
+  "fft":rest -> (f fftOpts rest, FFT)
+  _          -> ((defaultOptions, [], []), Sin)
   where
-    f (os,ns,es) = (foldr ($) defaultOptions os, ns, es)
+    f o as = case O.getOpt Permute o as of
+      (os, ns, es) -> (foldr ($) defaultOptions os, ns, es)
 
 spectrofy :: ((Options, [String], [String]), Mode) -> IO ()
-spectrofy ((Options{..}, args, errs),mode)
-  | not (null errs) = error $ unlines (errs++[usage])
-  | showHelp        = putStr usage
+spectrofy ((o, args, errs),mode)
+  | not (null errs) = putStr $ unlines (errs++[usage])
+  | showHelp o      = putStr usage
   | otherwise       = case args of
     ifile:ofile:_ -> do
-      let write = R.writeSF ofile (R.wav16 {R.samplerate = samplingRate})
+      let sr = samplingRate o
+          write = R.writeSF ofile (R.wav16 {R.samplerate = sr})
       img <- R.readImageFromBMP ifile
       case img of
         Left err   -> error $ show err
         Right img' -> case mode of
-          Sin -> write $ R.force $ sinsyn samplingRate numDelta img'
-          FFT -> write $ R.force $ fftsyn fftSize img'
+          Sin -> write $ R.force $ sinsyn sr (numDelta o) img'
+          FFT -> write $ R.force $ fftsyn (fftSize o) img'
     _ -> putStr usage
 
-data Mode = Sin | FFT
+data Mode = Sin | FFT deriving (Eq, Show)
 
 data Options = Options
   { showHelp :: Bool
@@ -71,8 +73,8 @@ defaultOptions = Options
   , isTest = False
   , fftSize = 1024 }
 
-sRateOpt :: OptDescr (Options -> Options)
-sRateOpt =
+rateOpt :: OptDescr (Options -> Options)
+rateOpt =
   Option ['r'] ["rate"]
   (ReqArg (\v o -> o {samplingRate = read v}) "INT")
   "Sampling rate (default 48000)"
@@ -88,7 +90,7 @@ sinOpts =
   [ Option ['d'] ["delta"]
     (ReqArg (\v flg -> flg {numDelta = read v}) "INT")
     "Number of delta samples (default 4800)"
-  , sRateOpt
+  , rateOpt
   , helpOpt
   ]
 
@@ -97,7 +99,7 @@ fftOpts =
   [ Option ['f'] ["fsize"]
     (ReqArg (\v flg -> flg {fftSize = read v}) "INT")
     "FFT size (default 1024)"
-  , sRateOpt
+  , rateOpt
   , helpOpt
   ]
 
@@ -105,8 +107,8 @@ usage :: String
 usage =
   unlines
     [ header
-    , usageInfo "sin" sinOpts
-    , usageInfo "fft" fftOpts
+    , O.usageInfo "sin" sinOpts
+    , O.usageInfo "fft" fftOpts
     , example
     ]
   where
@@ -119,10 +121,9 @@ usage =
        \  spectrofy sin -r 44100 -d 4410 in.bmp out.wav\n\
        \  spectrofy fft -r 48000 in.bmp out.wav\n"
 
-
 -- --------------------------------------------------------------------------
 --
--- Summing up sinusoids
+-- Summing up sinusoids manually
 --
 
 sinsyn :: Int -> Int -> Array DIM3 Word8 -> Array DIM2 Double
@@ -139,7 +140,7 @@ rgbamp arr = R.traverse arr f g where
 {-# INLINE rgbamp #-}
 
 to3D :: Int -> Array DIM2 Double -> Array DIM3 Double
-to3D n = R.extend (Z :. All :. All :. n)
+to3D n = R.extend (Z:.All:.All:.n)
 {-# INLINE to3D #-}
 
 toSins :: Int -> Array DIM3 Double -> Array DIM3 Double
@@ -173,27 +174,24 @@ squash arr = R.backpermute sh' f arr where
 
 -- --------------------------------------------------------------------------
 --
--- Inverse FFT
+-- Inversed FFT
 --
--- From haddock comments, it says that fft in repa runs 50x slower than fftw.
--- Though still faster than summing up sinusoids, in most case.
+-- From haddock comments, FFT in repa runs 50x slower than fftw.
 --
 
 fftsyn :: Int -> Array DIM3 Word8 -> Array DIM2 Double
-fftsyn fsize img = sig where
-  sig = foldr1 R.append $ map f [0..n-1]
-  f = sliced_fft fsize img'
+fftsyn fsz img = foldl1' R.append $ map (fftslice fsz img') [0..n-1] where
   img' = rgbamp img
-  _:._:.n = R.extent img'
+  _:._:.n:._ = R.extent img
 {-# INLINE fftsyn #-}
 
-sliced_fft :: Int -> Array DIM2 Double -> Int -> Array DIM2 Double
-sliced_fft wsize arr n =
-  R.reshape (Z :. 1 :. wsize :: DIM2) .
-  R.map fst .
+fftslice :: Int -> Array DIM2 Double -> Int -> Array DIM2 Double
+fftslice wsize arr n =
+  R.reshape (Z :. 1 :. wsize :: DIM2) $
+  R.map fst $
   R.fft1d R.Inverse $
-  R.slice (R.map (,0) $ grow2d wsize (zpad arr)) (Z:.All:.n)
-{-# INLINE sliced_fft #-}
+  R.slice (R.map (\x -> (x,0)) $ grow2d wsize (zpad arr)) (Z:.All:.n)
+{-# INLINE fftslice #-}
 
 grow2d :: Int -> Array DIM2 Double -> Array DIM2 Double
 grow2d n arr = R.traverse arr f g where
@@ -210,7 +208,7 @@ grow2d n arr = R.traverse arr f g where
 {-# INLINE grow2d #-}
 
 zpad :: Array DIM2 Double -> Array DIM2 Double
-zpad arr = R.reshape sh' arr' where
+zpad arr = {-# SCC "zpad" #-} R.reshape sh' arr' where
   _:.x:.y = R.extent arr
   len = x * y
   zeros = R.fromList zsh (replicate len 0)
@@ -218,9 +216,6 @@ zpad arr = R.reshape sh' arr' where
   sh' = Z :. (2*x) :. y
   arr' = R.append (R.reshape zsh arr) zeros
 {-# INLINE zpad #-}
-
------------------------------------------------------------------------------
--- Scratch
 
 -- chunk :: Int -> [a] -> [[a]]
 -- chunk n xs = case xs of
