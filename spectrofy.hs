@@ -194,7 +194,7 @@ fftslice wsize arr n =
   {-# SCC "fs_ifft" #-}
   R.ifft $
   {-# SCC "fs_slice" #-}
-  R.slice (R.map (:+ 0) $ grow2d wsize (zpad arr)) (Z:.All:.n)
+  R.slice (R.map (\x -> x:+x) $ grow2d wsize (zpad arr)) (Z:.All:.n)
 {-# INLINE fftslice #-}
 
 grow2d :: Int -> Array DIM2 Double -> Array DIM2 Double
