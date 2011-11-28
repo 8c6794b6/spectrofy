@@ -27,7 +27,11 @@ It converts input image to audio file with invoking:
 
 to this sound:
 
-<audio controls="controls" src="lena.wav"></audio>
+<audio controls="controls">
+  <source src="lena.wav" type="audio/wav" />
+  <source src="lena.ogg" type="audio/ogg" />
+  <a href="lena.wav"> download </a>
+</audio>
 
 spectrogram of result looks like this:
 
