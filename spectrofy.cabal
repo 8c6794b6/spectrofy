@@ -14,7 +14,7 @@ Description:
   Convertsimage to sound file.
   .
   Spectrogram of result sound file resembles input image. Currently
-  supporting reading BMP image and writing WAV audio.
+  supports reading BMP image and writing WAV audio.
 
 flag dev
   description:
