@@ -27,7 +27,7 @@ It converts input image to audio file with invoking:
 
 to this sound:
 
-<audio controls="controls" src="lena.wav" preload="auto"></audio>
+<audio controls="controls" src="http://8c6794b6.github.com/spectrofy/lena.wav" preload="auto"></audio>
 
 spectrogram of result looks like this:
 
