@@ -17,7 +17,7 @@ Spectrofy is a simple image to audio converter.
   <img src="lena_in.bmp" style="display:block;margin-left:auto; margin-right:auto;" />
 </div>
 
-It converts input image to audio file with invoking:
+Converting above image with invoking:
 
 <code>
   <pre>
@@ -25,7 +25,7 @@ It converts input image to audio file with invoking:
   </pre>
 </code>
 
-to this sound:
+result sound:
 
 <audio controls="controls">
   <source src="lena.ogg" type="audio/ogg" />
@@ -33,7 +33,7 @@ to this sound:
   <a href="lena.mp3"> download </a>
 </audio>
 
-spectrogram of result looks like this:
+spectrogram of the sound:
 
 <div>
   <img src="lena_out.png" style="display:block;margin-left:auto; margin-right:auto;" />
