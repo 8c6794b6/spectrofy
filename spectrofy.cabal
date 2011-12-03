@@ -5,13 +5,12 @@ license:       BSD3
 license-file:  LICENSE
 author:        8c6794b6
 maintainer:    8c6794b6@gmail.com
-Copyright:     8c6794b6, 2011
 category:      Sound, Graphics
 build-type:    Simple
 cabal-version: >=1.2
-
+homepage:      http://8c6794b6.github.com/spectrofy
 Description:
-  Convertsimage to sound file.
+  Converts image to sound file.
   .
   Spectrogram of result sound file resembles input image. Currently
   supports reading BMP image and writing WAV audio.
@@ -23,7 +22,6 @@ flag dev
     False
 
 executable spectrofy
-
   Main-is:
     spectrofy.hs
 
@@ -32,11 +30,10 @@ executable spectrofy
     -O2 -rtsopts -threaded
 
   if flag(dev)
-    ghc-options:
+    ghc-prof-options:
       -auto-all -caf-all
 
 library
-
   exposed-modules:
     Spectrofy.CLI
     Spectrofy.Synth
@@ -47,3 +44,11 @@ library
     repa-fftw >= 2.1.0 && < 2.2.0,
     repa-io == 2.1.0.1,
     repa-sndfile >= 2.1.0 && < 2.2.0
+
+  if flag(dev)
+    ghc-prof-options:
+      -auto-all -caf-all
+
+source-repository head
+  type:     git
+  location: https://github.com/8c6794b6/spectrofy.git
