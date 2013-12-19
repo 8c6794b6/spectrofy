@@ -24,25 +24,20 @@ flag dev
 executable spectrofy
   Main-is:
     spectrofy.hs
-
   ghc-options:
     -Wall -fno-warn-unused-do-bind
     -O2 -rtsopts -threaded
-
   ghc-prof-options:
     -auto-all -caf-all
 
 library
   ghc-options:
     -Wall
-
   ghc-prof-options:
     -auto-all -caf-all
-
   exposed-modules:
     Spectrofy.CLI
     Spectrofy.Synth
-
   build-depends:
     base >= 4.0 && < 5.0,
     repa >= 3.2.3,
