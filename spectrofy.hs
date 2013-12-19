@@ -1,6 +1,6 @@
 {-|
 Module      : $Header$
-CopyRight   : (c) 8c6794b6, 2011
+CopyRight   : (c) 8c6794b6, 2011-2013
 License     : BSD3
 Maintainer  : 8c6794b6@gmail.com
 Stability   : experimental

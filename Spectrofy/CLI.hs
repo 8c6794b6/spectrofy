@@ -1,6 +1,6 @@
 {-|
 Module      : $Header$
-CopyRight   : (c) 8c6794b6, 2011
+CopyRight   : (c) 8c6794b6, 2011-2013
 License     : BSD3
 Maintainer  : 8c6794b6@gmail.com
 Stability   : experimental
@@ -11,27 +11,26 @@ Entry point for command line interface.
 -}
 module Spectrofy.CLI (spectrofy) where
 
-import System.Console.GetOpt 
+import System.Console.GetOpt
   (OptDescr(..), ArgDescr(..), ArgOrder(..), getOpt, usageInfo)
 
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.IO.BMP as R
 import qualified Data.Array.Repa.IO.Sndfile as R
+import qualified Data.Array.Repa.Repr.ForeignPtr as R
 
 import qualified Spectrofy.Synth as S
 
 -- | Receive list of flags, and do work.
 --
--- Expecting the given list to hold flags and values. 
+-- Expecting the given list to hold flags and values.
 -- e.g. returned value from System.Environment.getAargs action.
 --
 spectrofy :: [String] -> IO ()
-spectrofy = work . parseOpts 
+spectrofy = work . parseOpts
 
 -- --------------------------------------------------------------------------
---
 -- Guts
---
 
 parseOpts :: [String] -> ((Options, [String], [String]), Mode)
 parseOpts args = case args of
@@ -49,13 +48,14 @@ work ((o, args, errs),mode)
   | otherwise       = case args of
     ifile:ofile:_ -> do
       let sr = samplingRate o
+          write :: R.Array R.F (R.DIM2) Double -> IO ()
           write = R.writeSF ofile (R.wav16 {R.samplerate = sr})
-      img <- R.readImageFromBMP ifile
+      img <- (fmap R.delay) `fmap` R.readImageFromBMP ifile
       case img of
         Left err   -> error $ show err
         Right img' -> case mode of
-          Sin -> write $ R.force $ S.sinsyn sr (numDelta o) img'
-          FFT -> write $ R.force $ S.fftsyn (fftSize o) img'
+          Sin -> write =<< R.computeP (S.sinsyn sr (numDelta o) img')
+          FFT -> write =<< R.computeP (S.fftsyn (fftSize o) img')
     _ -> putStr usage
 
 data Mode = Sin | FFT deriving (Eq, Show)

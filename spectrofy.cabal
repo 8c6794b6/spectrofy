@@ -29,25 +29,26 @@ executable spectrofy
     -Wall -fno-warn-unused-do-bind
     -O2 -rtsopts -threaded
 
-  if flag(dev)
-    ghc-prof-options:
-      -auto-all -caf-all
+  ghc-prof-options:
+    -auto-all -caf-all
 
 library
+  ghc-options:
+    -Wall
+
+  ghc-prof-options:
+    -auto-all -caf-all
+
   exposed-modules:
     Spectrofy.CLI
     Spectrofy.Synth
 
   build-depends:
     base >= 4.0 && < 5.0,
-    repa == 2.1.1.5,
-    repa-fftw >= 2.1.0 && < 2.2.0,
-    repa-io == 2.1.0.1,
-    repa-sndfile >= 2.1.0 && < 2.2.0
-
-  if flag(dev)
-    ghc-prof-options:
-      -auto-all -caf-all
+    repa >= 3.2.3,
+    repa-fftw >= 3.2.3,
+    repa-io >= 3.2.3.2,
+    repa-sndfile >= 3.2.3
 
 source-repository head
   type:     git
