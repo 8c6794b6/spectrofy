@@ -1,5 +1,5 @@
 name:          spectrofy
-version:       0.0.1
+version:       0.0.2
 synopsis:      Image to spectrogram converter
 license:       BSD3
 license-file:  LICENSE
@@ -21,14 +21,9 @@ flag dev
   default:
     False
 
-executable spectrofy
-  Main-is:
-    spectrofy.hs
-  ghc-options:
-    -Wall -fno-warn-unused-do-bind
-    -O2 -rtsopts -threaded
-  ghc-prof-options:
-    -auto-all -caf-all
+source-repository head
+  type:     git
+  location: https://github.com/8c6794b6/spectrofy.git
 
 library
   ghc-options:
@@ -45,6 +40,11 @@ library
     repa-io >= 3.2.3.2,
     repa-sndfile >= 3.2.3
 
-source-repository head
-  type:     git
-  location: https://github.com/8c6794b6/spectrofy.git
+executable spectrofy
+  Main-is:
+    spectrofy.hs
+  ghc-options:
+    -Wall -fno-warn-unused-do-bind
+    -O2 -rtsopts -threaded
+  ghc-prof-options:
+    -auto-all -caf-all
