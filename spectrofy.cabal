@@ -7,7 +7,7 @@ author:        8c6794b6
 maintainer:    8c6794b6@gmail.com
 category:      Sound, Graphics
 build-type:    Simple
-cabal-version: >=1.2
+cabal-version: >=1.6
 homepage:      http://8c6794b6.github.com/spectrofy
 Description:
   Converts image to sound file.
@@ -45,6 +45,6 @@ executable spectrofy
     spectrofy.hs
   ghc-options:
     -Wall -fno-warn-unused-do-bind
-    -O2 -rtsopts -threaded
+    -rtsopts -threaded
   ghc-prof-options:
     -auto-all -caf-all
